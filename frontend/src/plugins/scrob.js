@@ -1,6 +1,6 @@
 /**
  * Scrob — Lampa plugin for self-hosted media tracking
- * Build: 2026-09-06
+ * Build: 2026-09-21
  * Source: https://github.com/ellite/scrob
  */
 (function () {
@@ -1738,9 +1738,20 @@
     }
 
     // Single favorite write under the received guard (core Timeline received pattern).
+    // Every externally-originated list change lands here - applyDelta and both
+    // inbound converge paths - so this is where Lampa is told to re-read. Writing
+    // storage alone leaves Favorite's in-memory copy stale until something else
+    // happens to reload it, and the UI keeps showing the pre-update list.
+    // Inside the guard on purpose: read() can fire favorite events, and the
+    // outbound queue must not mistake them for a local user action.
     function writeFavorite(favorite) {
       received = true;
       Lampa.Storage.set('favorite', favorite);
+      try {
+        if (Lampa.Favorite && Lampa.Favorite.read) Lampa.Favorite.read(true);
+      } catch (e) {
+        console.error('Scrob', 'Favorite.read failed', e);
+      }
       received = false;
     }
 
