@@ -728,11 +728,12 @@ async def get_redoc(_: User = Depends(require_admin)):
     return get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} - ReDoc")
 
 # The backend is internal-only (localhost), but lock CORS to the configured
-# frontend origin as defence-in-depth. The backend uses Bearer token auth only
-# (no cookies), so allow_credentials is not needed.
+# frontend origin as defence-in-depth (CORS_ORIGINS overrides it; "*" turns
+# the check off). The backend uses Bearer token auth only (no cookies), so
+# allow_credentials is not needed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.server_url],
+    allow_origins=settings.cors_allow_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

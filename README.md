@@ -319,6 +319,7 @@ Database migrations run automatically on startup - no manual steps required.
 | `PUID` | `1000` | User ID to run the process as. |
 | `PGID` | `1000` | Group ID to run the process as. |
 | `BACKEND_PORT` | `7331` | Internal port the backend binds to. Override only if `7331` conflicts on bare metal. |
+| `CORS_ORIGINS` | *(`SERVER_URL`)* | Comma-separated browser origins allowed to call the API. `*` disables the origin check. |
 | `OIDC_ENABLED` | `false` | Enable OIDC login. |
 | `OIDC_DISABLE_PASSWORD_LOGIN` | `false` | Enforce OIDC-only login (disables username/password). |
 

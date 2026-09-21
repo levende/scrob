@@ -41,6 +41,15 @@ class Settings(BaseSettings):
 
     server_url: str = "http://localhost:7330"
 
+    # Browser origins allowed to call the API. Comma-separated; "*" turns the
+    # origin check off entirely. Unset => only SERVER_URL is allowed.
+    cors_origins: str = ""
+
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return origins or [self.server_url]
+
     # Already set to UTC in the Dockerfiles (ENV TZ=UTC) for the container's own
     # system clock; reused here as the server-side "today" for pages that have
     # no per-request browser timezone to go on (e.g. /airing-today's plain SSR
