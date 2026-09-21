@@ -139,20 +139,35 @@ export const onRequest = defineMiddleware(async (context, next) => {
         )
       : context.redirect("/login", 302);
 
-  // Requests to the backend proxy carrying a Scrob API key (header or query
-  // param) skip the cookie/JWT gate below — the proxy forwards the key as-is
-  // (see api/proxy/[...path].ts) and the backend's own per-endpoint auth
-  // dependency decides whether that key is accepted for the route.
-  const hasApiKey =
+  // This gate is a session redirector for the browser UI, not the
+  // authorization check. Any request to the backend proxy that carries a
+  // credential the proxy forwards goes straight through, and the backend's
+  // own per-endpoint dependency decides whether it is accepted.
+  //
+  // All four forms the proxy understands are listed, because listing only
+  // some of them locks out clients the backend would happily serve:
+  //   Authorization  the Bearer JWT the backend itself issues, and the
+  //                  credential every non-browser client uses after login
+  //                  (backend get_current_user)
+  //   X-Api-Key      the per-user key accepted as an alternative to a JWT
+  //                  (backend get_current_user_or_api_key)
+  //   ?api_key=      the same key as a query param, for <img> and the like
+  //   ?token=        a JWT as a query param, for elements that cannot set
+  //                  headers (<video>); the proxy turns it back into an
+  //                  Authorization header
+  const hasForwardedCredential =
     pathname.startsWith("/api/proxy/") &&
-    (context.request.headers.get("X-Api-Key") !== null || context.url.searchParams.has("api_key"));
+    (context.request.headers.has("Authorization") ||
+      context.request.headers.has("X-Api-Key") ||
+      context.url.searchParams.has("api_key") ||
+      context.url.searchParams.has("token"));
 
   // Skip auth for static assets and public routes
   const isStaticAsset = /\.(js|css|woff2?|ico|png|svg|webp|jpg|jpeg|webmanifest|json|xml)$/.test(pathname);
   const isAdminOnlyRoute = ADMIN_ONLY_ROUTES.includes(pathname);
   const isPublicRoute =
     !isAdminOnlyRoute &&
-    (hasApiKey || isStaticAsset || PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p)));
+    (hasForwardedCredential || isStaticAsset || PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some(p => pathname.startsWith(p)));
 
   // Anonymous access to any of these read-only pages is allowed only when the
   // admin has enabled logged-out navigation (Admin Settings) and a global
