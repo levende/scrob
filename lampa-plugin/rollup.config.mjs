@@ -9,15 +9,9 @@ import { compileString } from 'sass'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isProduction = process.env.NODE_ENV === 'production'
 
-// Build id, overridable with SCROB_VERSION. Reaches the bundle through
-// output.intro below and is read via src/build.js - used as the Lampa
-// manifest version and as the Sentry release.
-const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')
-const version = process.env.SCROB_VERSION || `2.0.0_beta_${stamp}`
-
 const banner = `/**
  * Scrob — Lampa plugin for self-hosted media tracking
- * Build: ${version}
+ * Build: ${new Date().toISOString().split('T')[0]}
  * Source: https://github.com/ellite/scrob
  */`
 
@@ -74,7 +68,6 @@ export default {
         file: '../frontend/src/plugins/scrob.js',
         format: 'iife',
         banner,
-        intro: `var SCROB_BUILD = ${JSON.stringify(version)};`,
         sourcemap: false
     },
     plugins: [

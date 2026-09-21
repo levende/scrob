@@ -61,18 +61,6 @@ export default function addLang() {
             en: 'Fill in server URL, username and password',
             be: 'Запоўніце адрас сервера, лагін і пароль'
         },
-        scrob_send_reports: {
-            uk: 'Надсилати звіти про помилки',
-            ru: 'Отправлять отчёты об ошибках',
-            en: 'Send error reports',
-            be: 'Дасылаць справаздачы пра памылкі'
-        },
-        scrob_send_reports_descr: {
-            uk: 'Тимчасово, на час бета-версії: анонімні звіти про збої плагіна',
-            ru: 'Временно, на время бета-версии: анонимные отчёты о сбоях плагина',
-            en: 'Temporary, for the beta: anonymous plugin crash reports',
-            be: 'Часова, на час бэта-версіі: ананімныя справаздачы пра збоі плагіна'
-        },
         scrob_2fa_not_supported: {
             uk: 'Увімкнено 2FA — використайте API-ключ або вимкніть 2FA',
             ru: 'Включена 2FA — используйте API-ключ или отключите 2FA',

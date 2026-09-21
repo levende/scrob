@@ -9,9 +9,6 @@ import { avatarHtml, switchProfile } from './utils/profiles'
 import * as custom from './utils/sync/custom'
 import * as wizard from './utils/sync/wizard'
 import CategoryComponent from './component/category'
-import { BUILD } from './build'
-// TEMPORARY (2.0.0 beta) - remove with utils/report.js
-import * as report from './utils/report'
 
 // Settings section icon (gradient ids prefixed scrob- to avoid conflicts)
 var ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 419 454"><defs><linearGradient id="scrobRingGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="454"><stop offset="0%" stop-color="#5B34D6"/><stop offset="50%" stop-color="#9E3BC1"/><stop offset="100%" stop-color="#C147D8"/></linearGradient><linearGradient id="scrobDotGrad" gradientUnits="objectBoundingBox" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#5B34D6"/><stop offset="100%" stop-color="#C147D8"/></linearGradient></defs><path d="M 394.09 73.88 A 226.5 226.5 0 1 0 332.74 427.26 L 287.64 358.22 A 144.6 144.6 0 1 1 334.56 130.14 Z" fill="url(#scrobRingGrad)"/><circle cx="368.97" cy="347.2" r="48.29" fill="url(#scrobDotGrad)"/></svg>`
@@ -888,19 +885,6 @@ function initSettings() {
         onChange: doLogout
     })
 
-    // ── Error reports (TEMPORARY, 2.0.0 beta) ────────────
-    Lampa.SettingsApi.addParam({
-        component: 'scrob',
-        param: { name: KEYS.SEND_REPORTS, type: 'trigger', default: true },
-        field: {
-            name: Lampa.Lang.translate('scrob_send_reports'),
-            description: Lampa.Lang.translate('scrob_send_reports_descr')
-        },
-        onChange: function (value) {
-            Lampa.Storage.set(KEYS.SEND_REPORTS, value)
-        }
-    })
-
     // ── Sync nested page button (after logout block) ─────
     Lampa.SettingsApi.addParam({
         component: 'scrob',
@@ -1196,15 +1180,12 @@ function restoreSession() {
 }
 
 function startPlugin() {
-    console.log('Scrob', 'startPlugin called', BUILD)
+    console.log('Scrob', 'startPlugin called')
     window.scrob_plugin = true
-
-    // First, so a throw during the rest of startup is still reported.
-    report.init()
 
     Lampa.Manifest.plugins = {
         type: 'other',
-        version: BUILD,
+        version: '1.0.0',
         name: 'Scrob',
         description: 'Scrob server profiles and watch data isolation',
         component: 'scrob'
