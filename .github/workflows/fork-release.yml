@@ -54,3 +54,16 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ env.APP_VERSION }}
           cache-from: type=gha,scope=fork-release
           cache-to: type=gha,mode=max,scope=fork-release
+
+      - name: Build and push omnibus image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.omnibus
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64' }}
+          push: true
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
+          tags: ghcr.io/${{ github.repository }}:${{ env.APP_VERSION }}-omnibus
+          cache-from: type=gha,scope=fork-release-omnibus
+          cache-to: type=gha,mode=max,scope=fork-release-omnibus
