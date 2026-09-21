@@ -59,9 +59,51 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 
+// Cross-origin access to the backend proxy, for external clients that talk to
+// Scrob from another origin (the Lampa plugin fetches /api/proxy/* from Lampa's
+// own page). Unset => no CORS headers at all, i.e. same-origin only, which is
+// what every install did before this existed. "*" allows any origin; otherwise
+// only the listed origins are echoed back.
+//
+// Credentials are deliberately never allowed: auth on these routes is
+// header-based (X-Api-Key / Bearer), and letting the session cookie ride along
+// cross-origin would turn any page the user visits into an authenticated client.
+const CORS_ORIGINS = (process.env.CORS_ORIGINS ?? "")
+  .split(",")
+  .map(o => o.trim())
+  .filter(Boolean);
+
+function allowedOrigin(request: Request): string | null {
+  const origin = request.headers.get("Origin");
+  if (!origin || CORS_ORIGINS.length === 0) return null;
+  if (CORS_ORIGINS.includes("*")) return "*";
+  return CORS_ORIGINS.includes(origin) ? origin : null;
+}
+
+function corsHeaders(origin: string, preflight: boolean): Record<string, string> {
+  const headers: Record<string, string> = { "Access-Control-Allow-Origin": origin };
+  // Without this a cache (or the browser) can serve one origin's response to
+  // another origin, since the body is identical but the header is not.
+  if (origin !== "*") headers["Vary"] = "Origin";
+  if (preflight) {
+    headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+    headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Api-Key";
+    headers["Access-Control-Max-Age"] = "86400";
+  }
+  return headers;
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const token = context.cookies.get("token")?.value;
   const { pathname } = context.url;
+
+  // Answered before the auth gate below: a preflight carries neither cookie
+  // nor API key, so the gate would 302 it to /login and the browser would
+  // read that as a failed preflight and never send the real request.
+  const corsOrigin = pathname.startsWith("/api/proxy/") ? allowedOrigin(context.request) : null;
+  if (corsOrigin && context.request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(corsOrigin, true) });
+  }
 
   // Requests to the backend proxy carrying a Scrob API key (header or query
   // param) skip the cookie/JWT gate below — the proxy forwards the key as-is
@@ -147,6 +189,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
   for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(header, value);
+  }
+  if (corsOrigin) {
+    for (const [header, value] of Object.entries(corsHeaders(corsOrigin, false))) {
+      response.headers.set(header, value);
+    }
   }
   return response;
 });
