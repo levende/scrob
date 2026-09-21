@@ -105,6 +105,35 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return new Response(null, { status: 204, headers: corsHeaders(corsOrigin, true) });
   }
 
+  // Every response leaves through here, including the early returns below -
+  // a redirect that skips the CORS headers reads to the browser as a plain
+  // "no Access-Control-Allow-Origin" failure, hiding the actual reason.
+  const finish = (response: Response) => {
+    for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+      response.headers.set(header, value);
+    }
+    if (corsOrigin) {
+      for (const [header, value] of Object.entries(corsHeaders(corsOrigin, false))) {
+        response.headers.set(header, value);
+      }
+    }
+    return response;
+  };
+
+  // A cross-origin API caller gets a real 401 instead of a 302 to the HTML
+  // login page: XHR follows redirects, and /login is not an API route and
+  // carries no CORS headers, so the client would still end up with an opaque
+  // CORS error rather than "not authenticated".
+  const denied = () =>
+    corsOrigin
+      ? finish(
+          new Response(JSON.stringify({ detail: "Not authenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }),
+        )
+      : context.redirect("/login", 302);
+
   // Requests to the backend proxy carrying a Scrob API key (header or query
   // param) skip the cookie/JWT gate below — the proxy forwards the key as-is
   // (see api/proxy/[...path].ts) and the backend's own per-endpoint auth
@@ -176,24 +205,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
         context.cookies.delete("token", { path: "/" });
       }
       if (!isPublicRoute && !(await isAllowedAnonymousPublicPage())) {
-        return context.redirect("/login", 302);
+        return denied();
       }
     }
   } else {
     // No token, redirect to login if not a public route
     if (!isPublicRoute && !(await isAllowedAnonymousPublicPage())) {
-      return context.redirect("/login", 302);
+      return denied();
     }
   }
 
-  const response = await next();
-  for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
-    response.headers.set(header, value);
-  }
-  if (corsOrigin) {
-    for (const [header, value] of Object.entries(corsHeaders(corsOrigin, false))) {
-      response.headers.set(header, value);
-    }
-  }
-  return response;
+  return finish(await next());
 });
