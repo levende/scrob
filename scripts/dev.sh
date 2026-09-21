@@ -252,7 +252,7 @@ BACKEND_PID=$!
 
 cd "$ROOT/frontend"
 info "Starting frontend (astro dev) on :$FRONTEND_PORT"
-BACKEND_PORT="$BACKEND_PORT" npm run dev -- --port "$FRONTEND_PORT" &
+BACKEND_PORT="$BACKEND_PORT" npm run dev -- --host --port "$FRONTEND_PORT" &
 FRONTEND_PID=$!
 
 printf '\n%s─────────────────────────────────────────────────%s\n' "$C_DIM" "$C_RESET"

@@ -12,6 +12,9 @@ export const GET = () =>
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=300",
+      // No caching in dev: the whole point of rebuilding the bundle is that
+      // the next fetch from Lampa picks it up, and a cached copy would sit
+      // in front of that for five minutes.
+      "Cache-Control": import.meta.env.DEV ? "no-store" : "public, max-age=300",
     },
   });
