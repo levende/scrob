@@ -6,7 +6,12 @@ const PUBLIC_ROUTES = ["/login", "/register", "/logout", "/oidc-callback", "/oid
 // third-party client hits with no Scrob session at all (#331) — the backend
 // leaves them unauthenticated by design, so the cookie gate must let them
 // through. Approve/pending/grants are NOT listed: those require a real login.
-const PUBLIC_PREFIXES = ["/auth/activate/", "/forgot-password", "/reset-password/", "/api/proxy/webhooks/", "/api/proxy/auth/has-users", "/api/proxy/auth/bootstrap-restore", "/api/proxy/auth/device/code", "/api/proxy/auth/device/token", "/api/proxy/media/stream/", "/api/proxy/radarr-compat/", "/api/proxy/sonarr-compat/"];
+// /api/proxy/auth/login is public for the same reason: it is the only way an
+// external client (the Lampa plugin) can exchange a password for a token, and
+// requiring an API key to get one is circular. It exposes nothing new - the
+// /login page is public and hands the same credentials to the same backend
+// endpoint, which rate-limits at 10/minute.
+const PUBLIC_PREFIXES = ["/auth/activate/", "/forgot-password", "/reset-password/", "/api/proxy/webhooks/", "/api/proxy/auth/has-users", "/api/proxy/auth/bootstrap-restore", "/api/proxy/auth/device/code", "/api/proxy/auth/device/token", "/api/proxy/auth/login", "/api/proxy/media/stream/", "/api/proxy/radarr-compat/", "/api/proxy/sonarr-compat/"];
 // Matches /profile/{id} (someone else's public profile page) but not the bare
 // /profile page (the logged-in user's own profile management), which must stay gated.
 const PUBLIC_PROFILE_PAGE_RE = /^\/profile\/\d+\/?$/;
