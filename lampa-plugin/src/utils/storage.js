@@ -12,7 +12,9 @@ export var KEYS = {
     ACTIVE_PROFILE_ID: 'scrob_active_profile_id',
     ACTIVE_API_KEY: 'scrob_active_api_key',
     SYNC_ENABLED: 'scrob_sync_enabled',
-    SYNC_INTERVAL: 'scrob_sync_interval'
+    SYNC_INTERVAL: 'scrob_sync_interval',
+    // TEMPORARY (2.0.0 beta) - see utils/report.js
+    SEND_REPORTS: 'scrob_send_reports'
 }
 
 // Keys isolated per profile: backed up on switch, restored for the target.

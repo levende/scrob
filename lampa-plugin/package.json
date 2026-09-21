@@ -6,7 +6,7 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c --watch",
-    "build:release": "NODE_ENV=production rollup -c"
+    "build:release": "rollup -c --environment NODE_ENV:production"
   },
   "devDependencies": {
     "@rollup/plugin-babel": "^6.0.0",

@@ -1,10 +1,12 @@
 /**
  * Scrob — Lampa plugin for self-hosted media tracking
- * Build: 2026-09-21
+ * Build: 2.0.0_beta_20260921T154002
  * Source: https://github.com/ellite/scrob
  */
 (function () {
     'use strict';
+
+    var SCROB_BUILD = "2.0.0_beta_20260921T154002";
 
     // Scrob plugin translations
     function addLang() {
@@ -68,6 +70,18 @@
           ru: 'Заполните адрес сервера, логин и пароль',
           en: 'Fill in server URL, username and password',
           be: 'Запоўніце адрас сервера, лагін і пароль'
+        },
+        scrob_send_reports: {
+          uk: 'Надсилати звіти про помилки',
+          ru: 'Отправлять отчёты об ошибках',
+          en: 'Send error reports',
+          be: 'Дасылаць справаздачы пра памылкі'
+        },
+        scrob_send_reports_descr: {
+          uk: 'Тимчасово, на час бета-версії: анонімні звіти про збої плагіна',
+          ru: 'Временно, на время бета-версии: анонимные отчёты о сбоях плагина',
+          en: 'Temporary, for the beta: anonymous plugin crash reports',
+          be: 'Часова, на час бэта-версіі: ананімныя справаздачы пра збоі плагіна'
         },
         scrob_2fa_not_supported: {
           uk: 'Увімкнено 2FA — використайте API-ключ або вимкніть 2FA',
@@ -484,7 +498,9 @@
       ACTIVE_PROFILE_ID: 'scrob_active_profile_id',
       ACTIVE_API_KEY: 'scrob_active_api_key',
       SYNC_ENABLED: 'scrob_sync_enabled',
-      SYNC_INTERVAL: 'scrob_sync_interval'
+      SYNC_INTERVAL: 'scrob_sync_interval',
+      // TEMPORARY (2.0.0 beta) - see utils/report.js
+      SEND_REPORTS: 'scrob_send_reports'
     };
 
     // Keys isolated per profile: backed up on switch, restored for the target.
@@ -3618,6 +3634,145 @@
       return comp;
     }
 
+    // Build identifier, injected by rollup via output.intro (see rollup.config.mjs).
+    // Falls back to 'dev' when the source runs unbundled.
+    var BUILD = typeof SCROB_BUILD !== 'undefined' ? SCROB_BUILD : 'dev';
+
+    // TEMPORARY (2.0.0 beta): crash reporting to Sentry.
+    //
+    // To remove: delete this file, the SEND_REPORTS key in storage.js, the two
+    // lang entries, the settings param and the init() call in main.js. Nothing
+    // else references it.
+    //
+    // No Sentry SDK on purpose: this bundle is transpiled for Chrome 37 (Android 5
+    // WebView) and the SDK needs a far newer runtime, while the endpoint it would
+    // call is one XHR with a JSON body.
+
+    var ENDPOINT = 'https://o4511769421152256.ingest.de.sentry.io/api/4511769432293456/store/' + '?sentry_version=7&sentry_client=scrob-lampa/1&sentry_key=60a21274368d2e9a6f098cd6738d1cd1';
+
+    // A reconnect loop or a failing render fires the same throw over and over; cap
+    // the session and drop repeats so neither the ingest nor a weak TV suffers.
+    var MAX_EVENTS = 25;
+    var sent = 0;
+    var seen = {};
+    var installed = false;
+    function safe(fn) {
+      try {
+        return fn();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Default on: the beta is the reason this exists. Storage may hand back a
+    // string on older Lampa builds, so compare loosely rather than trusting a type.
+    function enabled() {
+      var value = Lampa.Storage.get(KEYS.SEND_REPORTS, true);
+      return !(value === false || value === 'false' || value === '0' || value === 0);
+    }
+    function eventId() {
+      var out = '';
+      for (var i = 0; i < 32; i++) out += Math.floor(Math.random() * 16).toString(16);
+      return out;
+    }
+    function post(body) {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', ENDPOINT, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify(body));
+      } catch (e) {
+        // Reporting must never be the thing that breaks the plugin.
+      }
+    }
+
+    // context is a short label saying where the throw was caught, so two different
+    // call sites failing the same way stay separate entries.
+    function capture(error, context) {
+      if (!enabled() || sent >= MAX_EVENTS) return;
+      var err = error || {};
+      var type = err.name || 'Error';
+      var value = String(err.message || err || 'unknown');
+      var key = type + '|' + value + '|' + (context || '');
+      if (seen[key]) return;
+      seen[key] = true;
+      sent++;
+      post({
+        event_id: eventId(),
+        timestamp: new Date().toISOString(),
+        platform: 'javascript',
+        level: 'error',
+        logger: 'scrob-lampa-plugin',
+        release: BUILD,
+        exception: {
+          values: [{
+            type: type,
+            value: value
+          }]
+        },
+        tags: {
+          context: context || 'unknown',
+          // Which Lampa build a report came from decides whether it is our bug.
+          lampa: safe(function () {
+            return String(Lampa.Manifest.app_digital);
+          }) || 'unknown',
+          device: safe(function () {
+            return String(Lampa.Platform.get());
+          }) || 'unknown'
+        },
+        extra: {
+          stack: String(err.stack || ''),
+          user_agent: safe(function () {
+            return navigator.userAgent;
+          }),
+          // Scheme only - a self-hosted server address is the user's business.
+          server_scheme: safe(function () {
+            return String(Lampa.Storage.get(KEYS.SERVER_URL) || '').split(':')[0] || null;
+          })
+        }
+      });
+    }
+    function init() {
+      if (installed) return;
+      installed = true;
+      var previousOnError = window.onerror;
+      window.onerror = function (message, source, line) {
+        capture({
+          name: 'Error',
+          message: message
+        }, 'onerror ' + source + ':' + line);
+        if (typeof previousOnError === 'function') return previousOnError.apply(this, arguments);
+        return false;
+      };
+      if (typeof window.addEventListener === 'function') {
+        window.addEventListener('unhandledrejection', function (e) {
+          capture(e && e.reason || {
+            message: 'unhandled rejection'
+          }, 'unhandledrejection');
+        });
+      }
+
+      // The plugin swallows most of its own failures into console.error('Scrob', …)
+      // and those never reach window.onerror - during a beta they are exactly the
+      // ones worth seeing. Filter on the tag so Lampa's own noise stays out.
+      var previousConsoleError = console.error;
+      console.error = function () {
+        try {
+          if (arguments[0] === 'Scrob' || arguments[0] === 'ScrobSocket') {
+            var args = Array.prototype.slice.call(arguments);
+            var last = args[args.length - 1];
+            capture(last && last.message ? last : {
+              name: 'ScrobLog',
+              message: args.join(' ')
+            }, args.slice(0, -1).join(' '));
+          }
+        } catch (e) {
+          // never let reporting break logging
+        }
+        if (typeof previousConsoleError === 'function') previousConsoleError.apply(console, arguments);
+      };
+    }
+
     // Scrob — Lampa plugin: login to a self-hosted Scrob server,
     // switch between server users as profiles, isolate watch data per profile.
 
@@ -4467,6 +4622,23 @@
         onChange: doLogout
       });
 
+      // ── Error reports (TEMPORARY, 2.0.0 beta) ────────────
+      Lampa.SettingsApi.addParam({
+        component: 'scrob',
+        param: {
+          name: KEYS.SEND_REPORTS,
+          type: 'trigger',
+          default: true
+        },
+        field: {
+          name: Lampa.Lang.translate('scrob_send_reports'),
+          description: Lampa.Lang.translate('scrob_send_reports_descr')
+        },
+        onChange: function onChange(value) {
+          Lampa.Storage.set(KEYS.SEND_REPORTS, value);
+        }
+      });
+
       // ── Sync nested page button (after logout block) ─────
       Lampa.SettingsApi.addParam({
         component: 'scrob',
@@ -4792,17 +4964,20 @@
       }
     }
     function startPlugin() {
-      console.log('Scrob', 'startPlugin called');
+      console.log('Scrob', 'startPlugin called', BUILD);
       window.scrob_plugin = true;
+
+      // First, so a throw during the rest of startup is still reported.
+      init();
       Lampa.Manifest.plugins = {
         type: 'other',
-        version: '1.0.0',
+        version: BUILD,
         name: 'Scrob',
         description: 'Scrob server profiles and watch data isolation',
         component: 'scrob'
       };
       addLang();
-      Lampa.Template.add('scrob_style', '<style>/* Scrob plugin styles */\n/* Header profile button avatar */\n.scrob-avatar {\n  width: 1.8em;\n  height: 1.8em;\n  border-radius: 50%;\n  object-fit: cover;\n  display: block;\n}\n\n/* Letter avatar: first letter of username on colored background */\n.scrob-avatar--letter {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #fff;\n  font-weight: 700;\n  font-size: 0.9em;\n  line-height: 1;\n  text-transform: uppercase;\n  user-select: none;\n}\n\n/* Larger avatar inside the profile selectbox list */\n.selectbox-item .scrob-avatar {\n  width: 2.6em;\n  height: 2.6em;\n  font-size: 1em;\n}</style>');
+      Lampa.Template.add('scrob_style', '<style>.scrob-avatar{width:1.8em;height:1.8em;border-radius:50%;object-fit:cover;display:block}.scrob-avatar--letter{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.9em;line-height:1;text-transform:uppercase;user-select:none}.selectbox-item .scrob-avatar{width:2.6em;height:2.6em;font-size:1em}</style>');
       $('body').append(Lampa.Template.get('scrob_style', {}, true));
 
       // Nested page template for sync settings
