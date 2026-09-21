@@ -21,6 +21,12 @@ export default defineConfig({
     plugins: [tailwindcss()],
     server: {
       allowedHosts: ['abstract-dev.bellamylab.com', 'scrob-dev.bellamylab.com'],
+      // Dev only - the built server never runs Vite. Vite answers OPTIONS
+      // itself, before Astro's middleware ever sees the request, and since
+      // Vite 6 its default reflects only localhost origins: a preflight from
+      // a LAN device (a Lampa install) came back 204 with no
+      // Access-Control-Allow-Origin, so the real request never followed.
+      cors: true,
     }
   },
 
