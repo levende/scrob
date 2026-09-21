@@ -65,7 +65,7 @@ function includeFile() {
 export default {
     input: 'src/main.js',
     output: {
-        file: '../frontend/public/plugins/scrob.js',
+        file: '../frontend/src/plugins/scrob.js',
         format: 'iife',
         banner,
         sourcemap: false
