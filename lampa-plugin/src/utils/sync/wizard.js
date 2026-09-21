@@ -9,7 +9,7 @@ import {
 import * as mapstore from './mapstore'
 import * as mirror from './mirror'
 import * as custom from './custom'
-import { start as syncStart, detectConflicts } from './engine'
+import { start as syncStart, detectConflicts, writeFavorite } from './engine'
 
 // Snapshot TTL: rollback button lives 7 days (spec 5.1, step 0).
 var BACKUP_TTL = 7 * 24 * 3600 * 1000
@@ -251,8 +251,9 @@ export function applyAll(plan, onDone) {
     function next() {
         if (i >= rows.length) {
             applyCustom(favorite, plan.customMode)
-            Lampa.Storage.set('favorite', favorite)
-            try { if (Lampa.Favorite && Lampa.Favorite.read) Lampa.Favorite.read() } catch (e) {}
+            // Shared write path: the wizard's rows come from the API just like
+            // a converge does, so it needs the same re-read and the same guard.
+            writeFavorite(favorite)
             markDone()
             Lampa.Noty.show(t('scrob_wizard_done'))
             maybeStartSync()

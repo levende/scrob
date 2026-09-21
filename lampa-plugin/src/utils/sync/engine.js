@@ -110,7 +110,7 @@ function readFavorite() {
 // happens to reload it, and the UI keeps showing the pre-update list.
 // Inside the guard on purpose: read() can fire favorite events, and the
 // outbound queue must not mistake them for a local user action.
-function writeFavorite(favorite) {
+export function writeFavorite(favorite) {
     received = true
     Lampa.Storage.set('favorite', favorite)
     try {

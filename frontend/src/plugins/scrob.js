@@ -3393,10 +3393,9 @@
       function next() {
         if (i >= rows.length) {
           applyCustom(favorite, plan.customMode);
-          Lampa.Storage.set('favorite', favorite);
-          try {
-            if (Lampa.Favorite && Lampa.Favorite.read) Lampa.Favorite.read();
-          } catch (e) {}
+          // Shared write path: the wizard's rows come from the API just like
+          // a converge does, so it needs the same re-read and the same guard.
+          writeFavorite(favorite);
           markDone();
           Lampa.Noty.show(t('scrob_wizard_done'));
           maybeStartSync();
