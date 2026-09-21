@@ -9,13 +9,18 @@ on:
         description: 'Version tag, e.g. v2.6.0-fork.2 (required for manual runs)'
         required: true
         type: string
+      platforms:
+        description: 'Target platforms. Add linux/arm64 only when needed - it is slow (QEMU).'
+        required: false
+        default: 'linux/amd64'
+        type: string
 
 jobs:
   build:
     name: Build & push fork image
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
 
     env:
@@ -24,13 +29,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set git identity
-        run: |
-          git config user.email "ci@lampame.dev"
-          git config user.name "fork-ci"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -45,144 +43,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Build and push standard image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64' }}
           push: true
           build-args: |
             APP_VERSION=${{ env.APP_VERSION }}
-          tags: |
-            lampame/scrob:${{ env.APP_VERSION }}
-            lampame/scrob:latest
-            ghcr.io/lampame/scrob:${{ env.APP_VERSION }}
-            ghcr.io/lampame/scrob:latest
+          tags: ghcr.io/${{ github.repository }}:${{ env.APP_VERSION }}
           cache-from: type=gha,scope=fork-release
           cache-to: type=gha,mode=max,scope=fork-release
-
-      - name: Build and push omnibus image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.omnibus
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            APP_VERSION=${{ env.APP_VERSION }}
-          tags: |
-            lampame/scrob:${{ env.APP_VERSION }}-omnibus
-            lampame/scrob:latest-omnibus
-            ghcr.io/lampame/scrob:${{ env.APP_VERSION }}-omnibus
-            ghcr.io/lampame/scrob:latest-omnibus
-          cache-from: type=gha,scope=fork-release-omnibus
-          cache-to: type=gha,mode=max,scope=fork-release-omnibus
-
-      - name: Generate categorized release notes (upstream vs fork)
-        id: notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          REPO="${{ github.repository }}"
-          CURRENT="${{ env.APP_VERSION }}"
-          PREV=$(git tag -l 'v*-fork*' --sort=-version:refname | grep -v "^${CURRENT}$" | head -1 || true)
-
-          UPSTREAM_FILE=$(mktemp)
-          FORK_FILE=$(mktemp)
-          UPSTREAM_HASHES=$(mktemp)
-          trap 'rm -f "$UPSTREAM_FILE" "$FORK_FILE" "$UPSTREAM_HASHES"' EXIT
-
-          if [ -n "$PREV" ]; then
-            echo "Previous fork tag: $PREV"
-            RANGE="${PREV}..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-
-          # 1) Find all sync merge commits and collect upstream commit hashes
-          #    Sync merges have "sync" or "upstream" in commit message
-          #    Commits introduced by the merge = parent1..parent2
-          while read -r hash p1 p2 rest; do
-            [ -z "$hash" ] && continue
-            subject=$(git log -1 --format=%s "$hash")
-            if echo "$subject" | grep -qiE "(sync|upstream)"; then
-              # Collect all commit hashes introduced by this merge
-              git log --pretty=format:"%H" "${p1}..${p2}" >> "$UPSTREAM_HASHES" 2>/dev/null
-            fi
-          done < <(git log --merges --pretty=format:"%H %P" "$RANGE" 2>/dev/null)
-
-          # 2) Add sync PR line to upstream (from generate-notes API)
-          NOTES=$(gh api "repos/${REPO}/releases/generate-notes" \
-            -f tag_name="$CURRENT" \
-            ${PREV:+-f previous_tag_name="$PREV"} \
-            -q .body 2>/dev/null || echo "")
-
-          while IFS= read -r line; do
-            [[ "$line" == \**\ by\ @* ]] || continue
-            title=$(echo "$line" | sed -E 's/^\* (.*) by @.*/\1/')
-            if echo "$title" | grep -qiE "(sync|upstream)"; then
-              echo "$line" >> "$UPSTREAM_FILE"
-            fi
-          done <<< "$NOTES"
-
-          # 3) Categorize non-merge commits: upstream if hash in sync PR, else fork
-          while IFS='|' read -r hash subject; do
-            [ -z "$hash" ] && continue
-            short="${hash:0:7}"
-            if grep -q "$hash" "$UPSTREAM_HASHES" 2>/dev/null; then
-              echo "- ${subject} (${short})" >> "$UPSTREAM_FILE"
-            else
-              echo "- ${subject} (${short})" >> "$FORK_FILE"
-            fi
-          done < <(git log --no-merges --pretty=format:"%H|%s" "$RANGE" 2>/dev/null)
-
-          # --- Build markdown ---
-          {
-            echo "## What's Changed"
-            echo ""
-
-            if [ -s "$UPSTREAM_FILE" ]; then
-              echo "### 🔄 Upstream Changes"
-              echo ""
-              cat "$UPSTREAM_FILE"
-              echo ""
-            fi
-
-            if [ -s "$FORK_FILE" ]; then
-              echo "### 🍴 Fork Changes"
-              echo ""
-              cat "$FORK_FILE"
-              echo ""
-            fi
-
-            if [ ! -s "$UPSTREAM_FILE" ] && [ ! -s "$FORK_FILE" ]; then
-              echo "_No changes found since previous release._"
-              echo ""
-            fi
-
-            # Full changelog link
-            if [ -n "$PREV" ]; then
-              echo "**Full Changelog**: https://github.com/${REPO}/compare/${PREV}...${CURRENT}"
-            fi
-          } > release_notes.md
-
-          echo "=== Generated release notes ==="
-          cat release_notes.md
-          echo "================================"
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ env.APP_VERSION }}" \
-            --title "${{ env.APP_VERSION }}" \
-            --notes-file release_notes.md \
-            --latest
